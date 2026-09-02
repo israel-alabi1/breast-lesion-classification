@@ -9,23 +9,23 @@
 
 ## Overview
 
-This project investigates whether **lesion-focused representation** improves breast-lesion classification from ultrasound images.
+This project investigates whether **lesion-focused image representation** improves breast-lesion classification from ultrasound images.
 
-The study uses the **Breast Ultrasound Images (BUSI)** dataset and compares a VGG16 transfer-learning classifier under three input conditions:
+The study uses the **Breast Ultrasound Images (BUSI)** dataset and evaluates a VGG16 transfer-learning classifier under three input conditions:
 
-1. **Preprocessed Whole Image** — image normalization + CLAHE.
+1. **Preprocessed Whole Image** — min-max normalization + CLAHE.
 2. **Raw ROI** — lesion-focused region extracted using the BUSI ground-truth mask.
-3. **Preprocessed ROI** — lesion-focused ROI extracted after normalization + CLAHE.
+3. **Preprocessed ROI** — lesion-focused ROI extracted from the normalized + CLAHE image.
 
-The project was completed as a team project, with my primary contribution focused on **image preprocessing, ROI extraction, VGG16 implementation, and analysis/reporting**. I also led the team and coordinated the overall technical workflow.
+The project was completed as a team project. I **led the team** and was primarily responsible for image preprocessing, lesion ROI extraction, VGG16 implementation, experimental analysis, and reporting.
 
 ---
 
 ## Research Question
 
-**Does lesion-focused ROI extraction, with or without contrast enhancement, improve benign/malignant breast-lesion classification performance?**
+> **Does lesion-focused ROI extraction, with or without contrast enhancement, improve benign/malignant breast-lesion classification performance?**
 
-The experimental design isolates the effect of the input representation while keeping the downstream VGG16 architecture and training protocol consistent.
+The experimental design compares different input representations while keeping the downstream VGG16 architecture and training protocol consistent.
 
 ```text
                          BUSI Ultrasound Images
@@ -36,9 +36,8 @@ The experimental design isolates the effect of the input representation while ke
               │                   │                   │
        Whole Image             Raw ROI        Preprocessed ROI
               │                   │                   │
-              │                   │                   │
-        Normalization             │          Normalization + CLAHE
-             + CLAHE              │                   │
+       Normalization             │          Normalization + CLAHE
+          + CLAHE                │                   │
               │                   │                   │
               └───────────────────┼───────────────────┘
                                   ↓
@@ -52,7 +51,7 @@ The experimental design isolates the effect of the input representation while ke
                                   ↓
                          Sigmoid Classification
                                   ↓
-                    Accuracy / F1 / ROC-AUC
+                       Accuracy / F1 / ROC-AUC
 ```
 
 ---
@@ -64,13 +63,9 @@ The project uses the **Breast Ultrasound Images (BUSI)** dataset for binary clas
 - **Benign**
 - **Malignant**
 
-The dataset also provides lesion ground-truth masks, which are used for the ROI extraction experiments.
+The dataset also provides lesion ground-truth masks used for the ROI extraction experiments.
 
-### Important
-
-The original BUSI dataset is **not included in this repository** because of dataset distribution and repository-size considerations.
-
-Please obtain the dataset from its original source and place it locally under:
+The BUSI dataset is **not included in this repository**. Obtain it from the original source and place it locally under:
 
 ```text
 data/
@@ -88,13 +83,11 @@ The `normal` class is retained in the source dataset but is not used in the lesi
 
 ### 1. Image preprocessing
 
-The original BUSI images had already undergone some preprocessing. Additional denoising experiments were considered, but Gaussian denoising did **not improve classification performance**, so it was not included in the final pipeline.
+The original BUSI images had already undergone some preprocessing. Additional denoising was considered during development, but Gaussian denoising did **not improve downstream classification performance** and was therefore excluded from the final pipeline.
 
-The retained preprocessing pipeline consists of:
+The final preprocessing pipeline was:
 
-- Intensity normalization
-- Contrast Limited Adaptive Histogram Equalization (**CLAHE**)
-- Resize to **224 × 224**
+**Grayscale ultrasound image → Min-Max normalization → CLAHE → Resize to 224 × 224**
 
 CLAHE configuration:
 
@@ -103,17 +96,21 @@ clipLimit = 2.0
 tileGridSize = (8, 8)
 ```
 
-See:
+#### Preprocessing example
 
-**[`01_image_preprocessing.ipynb`](01_image_preprocessing.ipynb)**
+![Image preprocessing pipeline](results/preprocessing_pipeline.png)
+
+*Image preprocessing pipeline: min-max normalization, CLAHE-based contrast enhancement, and resizing to 224 × 224.*
+
+See [`01_image_preprocessing.ipynb`](notebooks/01_image_preprocessing.ipynb).
 
 ---
 
-### 2. ROI extraction
+### 2. Lesion ROI extraction
 
-Lesion-focused ROIs are extracted using the BUSI ground-truth lesion masks.
+Lesion-focused ROIs were extracted using the BUSI ground-truth lesion masks.
 
-The procedure is:
+The procedure was:
 
 ```text
 Ground-truth mask
@@ -127,24 +124,26 @@ Crop to lesion-containing bounding box
 Resize to 224 × 224
 ```
 
-Two ROI variants are generated:
+Two ROI variants were generated:
 
 - **Raw ROI** — extracted from the original image.
 - **Preprocessed ROI** — extracted from the normalized + CLAHE image.
 
-See:
+#### ROI extraction example
 
-**[`02_roi_extraction.ipynb`](02_roi_extraction.ipynb)**
+![Mask-guided ROI extraction](results/roi_extraction_pipeline.png)
 
-> The ROI extraction is **mask-guided**, not an automatic lesion-detection system. The ground-truth mask is available because this is an experimental classification study.
+*Mask-guided lesion ROI extraction using the BUSI ground-truth mask, morphological dilation, masking, bounding-box cropping, and resizing.*
+
+> **Important:** ROI extraction is **mask-guided**, not an automatic lesion-detection or segmentation system. Ground-truth masks are used because this is an experimental classification study.
+
+See [`02_roi_extraction.ipynb`](notebooks/02_roi_extraction.ipynb).
 
 ---
 
 ### 3. Patient-level splitting
 
-To reduce data leakage, images are split at the **patient level** rather than randomly splitting individual images.
-
-The patient identifier is extracted from the BUSI filename, and no patient is allowed to occur in both training and test sets.
+To reduce data leakage, the original experiment split data at the **patient level** rather than randomly splitting individual images.
 
 The original experiment used:
 
@@ -152,6 +151,7 @@ The original experiment used:
 - Approximately 70% training patients
 - 15% validation patients
 - 15% test patients
+- **Train/test patient overlap: 0**
 
 Recorded image counts:
 
@@ -161,15 +161,13 @@ Recorded image counts:
 | Validation | 107 |
 | Test | 104 |
 
-**Train/test patient overlap: 0**
-
 ---
 
 ### 4. VGG16 transfer learning
 
-The classifier uses **VGG16 pretrained on ImageNet**, with the original ImageNet classification head removed.
+The classifier uses **VGG16 pretrained on ImageNet**, with the original classification head removed.
 
-The convolutional backbone is frozen and a task-specific classification head is added:
+The convolutional backbone was frozen and a task-specific classification head was added:
 
 ```text
 VGG16 (ImageNet, frozen)
@@ -182,8 +180,6 @@ Dropout(0.5)
         ↓
 Dense(1, Sigmoid)
 ```
-
-Training configuration:
 
 | Parameter | Value |
 |---|---:|
@@ -200,21 +196,25 @@ Training configuration:
 | Loss | Binary cross-entropy |
 | Classification threshold | 0.5 |
 
-See:
-
-**[`03_vgg16_model_comparison.ipynb`](03_vgg16_model_comparison.ipynb)**
+See [`03_vgg16_model_comparison.ipynb`](notebooks/03_vgg16_model_comparison.ipynb).
 
 ---
 
 ## Results
 
-The three experimental conditions produced the following recorded test-set results:
+The three experimental conditions produced the following **recorded test-set results**:
 
 | Input condition | Accuracy | Malignant F1 | ROC-AUC |
 |---|---:|---:|---:|
 | Preprocessed Whole Image | 0.78 | 0.62 | 0.837 |
 | Raw ROI | 0.95 | 0.93 | 0.996 |
 | **Preprocessed ROI** | **0.96** | **0.94** | **0.998** |
+
+### Performance comparison
+
+![VGG16 performance comparison](results/model_performance_comparison.png)
+
+*Recorded VGG16 test-set performance across the three input representations.*
 
 ### Best configuration
 
@@ -225,14 +225,11 @@ The three experimental conditions produced the following recorded test-set resul
 - **Malignant F1-score:** 0.94
 - **ROC-AUC:** 0.998
 
-Recorded confusion matrix:
+### Confusion matrix
 
-```text
-                  Predicted
-                 Benign  Malignant
-Actual Benign       66       0
-       Malignant     4      34
-```
+![Confusion matrix for VGG16 with preprocessed ROI](results/confusion_matrix_vgg16_preprocessed_roi.png)
+
+*Confusion matrix for the best-performing configuration.*
 
 ### Key finding
 
@@ -251,9 +248,11 @@ This suggests that reducing irrelevant image context and focusing the classifier
 ## Repository Structure
 
 ```text
-AI-Based-Medical-Image-Analysis/
+breast-lesion-classification/
 │
 ├── README.md
+├── requirements.txt
+├── .gitignore
 │
 ├── notebooks/
 │   ├── 01_image_preprocessing.ipynb
@@ -263,12 +262,11 @@ AI-Based-Medical-Image-Analysis/
 ├── data/
 │   └── .gitkeep
 │
-├── results/
-│   └── .gitkeep
-│
-├── requirements.txt
-│
-└── .gitignore
+└── results/
+    ├── preprocessing_pipeline.png
+    ├── roi_extraction_pipeline.png
+    ├── model_performance_comparison.png
+    └── confusion_matrix_vgg16_preprocessed_roi.png
 ```
 
 ### Notebook workflow
@@ -277,9 +275,9 @@ Run the notebooks in this order:
 
 ```text
 01_image_preprocessing.ipynb
-            ↓
+             ↓
 02_roi_extraction.ipynb
-            ↓
+             ↓
 03_vgg16_model_comparison.ipynb
 ```
 
@@ -287,11 +285,11 @@ Run the notebooks in this order:
 
 ## Installation
 
-Clone the repository and create a Python environment:
+Clone the repository:
 
 ```bash
 git clone <YOUR-REPOSITORY-URL>
-cd AI-Based-Medical-Image-Analysis
+cd breast-lesion-classification
 ```
 
 Install the dependencies:
@@ -323,11 +321,9 @@ The notebooks are designed to make the project workflow understandable and porta
 
 ### Reproduction note
 
-The original project did not save trained model checkpoints or prediction arrays in the supplied materials, and all stochastic TensorFlow operations were not globally seeded.
+The original project did not save trained model checkpoints or prediction arrays, and all stochastic TensorFlow operations were not globally seeded. Therefore, a fresh training run may produce slightly different learned weights and metrics.
 
-Therefore, a fresh training run may produce slightly different learned weights and metrics.
-
-The results reported above are the **recorded results from the original project run**, while a new execution should be considered an independent reproduction.
+The results reported in this repository are the **recorded results from the original project run**. A new execution should therefore be considered an independent reproduction.
 
 ---
 
